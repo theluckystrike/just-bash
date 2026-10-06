@@ -3,6 +3,15 @@ import { Bash } from "./Bash.js";
 import { nullPrototype } from "./commands/query-engine/safe-object.js";
 
 describe("execution result environment", () => {
+  it("preserves RHS side effects after successful prefix commands", async () => {
+    const result = await new Bash().exec(
+      'TEMP=original; TEMP=$((TEMP=5)) :; echo "$TEMP"; TEMP=$((TEMP=6)) echo command; echo "$TEMP"',
+    );
+    expect(result.stdout).toBe("5\ncommand\n6\n");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+    expect(result.env.TEMP).toBe("6");
+  });
   it.each([
     "TEMP=secret eval 'echo ${MISSING:?required}'",
     "TEMP=(one) echo ${MISSING:?required}",

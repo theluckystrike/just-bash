@@ -78,11 +78,6 @@ export async function processAssignments(
   tempAssignments: Map<string, string | undefined>,
   tempArrays: Map<string, ShellArray | undefined>,
 ): Promise<AssignmentResult> {
-  // RHS expansion can mutate prefix targets before assignment is committed.
-  const originalEnv =
-    node.name && node.assignments.length > 0
-      ? new Map(ctx.state.env)
-      : ctx.state.env;
   let xtraceOutput = "";
 
   for (const assignment of node.assignments) {
@@ -98,7 +93,6 @@ export async function processAssignments(
         assignment.append,
         tempAssignments,
         tempArrays,
-        originalEnv,
       );
       if (arrayResult.error) {
         return {
@@ -159,7 +153,6 @@ export async function processAssignments(
       value,
       assignment.append,
       tempAssignments,
-      originalEnv,
     );
     if (scalarResult.error) {
       return {
@@ -196,7 +189,6 @@ async function processArrayAssignment(
   append: boolean,
   tempAssignments: Map<string, string | undefined>,
   tempArrays: Map<string, ShellArray | undefined>,
-  originalEnv: ReadonlyMap<string, string>,
 ): Promise<SingleAssignmentResult> {
   let xtraceOutput = "";
 
@@ -308,7 +300,7 @@ async function processArrayAssignment(
   // For prefix assignments with a command, bash stringifies the array syntax
   if (node.name) {
     if (!tempAssignments.has(name)) {
-      tempAssignments.set(name, originalEnv.get(name));
+      tempAssignments.set(name, savedScalar);
     }
     const elements = array.map((el) => wordToLiteralString(el));
     const stringified = `(${elements.join(" ")})`;
@@ -822,7 +814,6 @@ async function processScalarAssignment(
   value: string,
   append: boolean,
   tempAssignments: Map<string, string | undefined>,
-  originalEnv: ReadonlyMap<string, string>,
 ): Promise<SingleAssignmentResult> {
   let xtraceOutput = "";
 
@@ -910,7 +901,7 @@ async function processScalarAssignment(
   if (node.name) {
     if (arrayElementKey === undefined) {
       if (!tempAssignments.has(targetName)) {
-        tempAssignments.set(targetName, originalEnv.get(targetName));
+        tempAssignments.set(targetName, ctx.state.env.get(targetName));
       }
       ctx.state.env.set(targetName, finalValue);
     } else {

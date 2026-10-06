@@ -679,6 +679,11 @@ export class Interpreter {
 
     const tempAssignments = new Map<string, string | undefined>();
     const tempArrays = new Map<string, ShellArray | undefined>();
+    const prefixFailureEnv =
+      node.name && node.assignments.length > 0
+        ? new Map(this.ctx.state.env)
+        : this.ctx.state.env;
+    let commandFailed = false;
     let commandName = "";
     let commandStarted = false;
     let bindingsPushed = false;
@@ -696,12 +701,6 @@ export class Interpreter {
         return assignmentResult.error;
       }
       const xtraceAssignmentOutput = assignmentResult.xtraceOutput;
-      const restoreTempAssignments = (): void => {
-        for (const [name, value] of tempAssignments) {
-          if (value === undefined) this.ctx.state.env.delete(name);
-          else this.ctx.state.env.set(name, value);
-        }
-      };
       if (!node.name) {
         // No command name - could be assignment-only or redirect-only (bare redirects)
         // e.g., "x=5" (assignment-only) or "> file" (bare redirect to create empty file)
@@ -717,7 +716,6 @@ export class Interpreter {
           onTransaction(transaction);
           const preparedRedirections = await transaction.prepare(stdin);
           if (preparedRedirections.error) {
-            restoreTempAssignments();
             if (!preparedRedirections.errorCause) {
               transaction.finish();
               return preparedRedirections.error;
@@ -884,7 +882,6 @@ export class Interpreter {
       onTransaction(transaction);
       const preparedRedirections = await transaction.prepare(stdin);
       if (preparedRedirections.error) {
-        restoreTempAssignments();
         if (!preparedRedirections.errorCause) {
           transaction.finish();
           return preparedRedirections.error;
@@ -928,16 +925,6 @@ export class Interpreter {
         // In bash, "exec" with only redirections does NOT persist prefix assignments
         // This is the "special case of the special case" - unlike other special builtins
         // (like ":"), exec without a command restores temp assignments
-        for (const [name, value] of tempAssignments) {
-          if (value === undefined) this.ctx.state.env.delete(name);
-          else this.ctx.state.env.set(name, value);
-        }
-        // Clear temp exported vars
-        if (this.ctx.state.tempExportedVars) {
-          for (const name of tempAssignments.keys()) {
-            this.ctx.state.tempExportedVars.delete(name);
-          }
-        }
         transaction.finish();
         return OK;
       }
@@ -1066,6 +1053,7 @@ export class Interpreter {
       // An actual exit keeps command-prefix bindings visible to EXIT handling.
       // Fatal expansion failures, including propagated eval failures, unwind them.
       commandExited = error instanceof ExitError && error.reason === "exit";
+      commandFailed = true;
       throw error;
     } finally {
       // Successful null commands retain assignments, as do dispatched POSIX
@@ -1088,7 +1076,8 @@ export class Interpreter {
             this.ctx.state.arrays.set(name, array);
           } else this.ctx.state.arrays?.delete(name);
         }
-        for (const [name, value] of tempAssignments) {
+        for (const [name, savedValue] of tempAssignments) {
+          const value = commandFailed ? prefixFailureEnv.get(name) : savedValue;
           // Skip restoration if this variable was a local that was fully unset
           // This implements bash's behavior where unsetting all local cells
           // prevents the tempenv from being restored
