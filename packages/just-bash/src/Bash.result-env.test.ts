@@ -80,6 +80,15 @@ describe("execution result environment", () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it("preserves array RHS side effects beneath temporary bindings", async () => {
+    const result = await new Bash().exec(
+      'a=(old); a=("$((a[0]=5))") :; printf "array=<%s>\\n" "${a[0]}"',
+    );
+    expect(result.stdout).toBe("array=<5>\n");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
   it.each([
     "TEMP=$((TEMP=5)) OTHER=${MISSING:?required} echo",
     "TEMP=$((TEMP=5)) eval 'echo ${MISSING:?required}'",

@@ -251,9 +251,19 @@ async function processArrayAssignment(
   const savedArray = getArray(ctx, name);
   const savedArraySnapshot = savedArray ? cloneArray(savedArray) : undefined;
   const savedScalar = ctx.state.env.get(name);
-  if (node.name && !tempArrays.has(name)) {
-    tempArrays.set(name, savedArraySnapshot);
-  }
+  const beforeInstall = (): void => {
+    if (!node.name) return;
+    // RHS side effects belong to the underlying state, not the temporary array.
+    if (!tempArrays.has(name)) {
+      const underlyingArray = getArray(ctx, name);
+      tempArrays.set(
+        name,
+        underlyingArray ? cloneArray(underlyingArray) : undefined,
+      );
+    }
+    if (!tempAssignments.has(name))
+      tempAssignments.set(name, ctx.state.env.get(name));
+  };
   const restoreTarget = (): void => {
     ctx.state.arrays ??= new Map();
     if (savedArraySnapshot) ctx.state.arrays.set(name, savedArraySnapshot);
@@ -280,6 +290,7 @@ async function processArrayAssignment(
         array,
         append,
         clearExistingElements,
+        beforeInstall,
         (msg) => {
           xtraceOutput += msg;
         },
@@ -291,6 +302,7 @@ async function processArrayAssignment(
         array,
         append,
         clearExistingElements,
+        beforeInstall,
       );
     } else {
       await processSimpleArrayAssignment(
@@ -299,6 +311,7 @@ async function processArrayAssignment(
         array,
         append,
         clearExistingElements,
+        beforeInstall,
       );
     }
   } catch (error) {
@@ -308,9 +321,6 @@ async function processArrayAssignment(
 
   // For prefix assignments with a command, bash stringifies the array syntax
   if (node.name) {
-    if (!tempAssignments.has(name)) {
-      tempAssignments.set(name, savedScalar);
-    }
     const elements = array.map((el) => wordToLiteralString(el));
     const stringified = `(${elements.join(" ")})`;
     ctx.state.env.set(name, stringified);
@@ -364,6 +374,7 @@ async function processAssociativeArrayAssignment(
   array: WordNode[],
   append: boolean,
   clearExistingElements: () => void,
+  beforeInstall: () => void,
   addXtraceOutput: (msg: string) => void,
 ): Promise<void> {
   interface PendingAssocElement {
@@ -416,6 +427,7 @@ async function processAssociativeArrayAssignment(
   }
 
   // Clear existing elements AFTER all expansion
+  beforeInstall();
   ctx.executionScope.consumeWork(
     pendingElements.length,
     "associative array assignment",
@@ -457,6 +469,7 @@ async function processIndexedArrayWithKeysAssignment(
   array: WordNode[],
   append: boolean,
   clearExistingElements: () => void,
+  beforeInstall: () => void,
 ): Promise<void> {
   interface PendingElement {
     type: "keyed";
@@ -520,6 +533,7 @@ async function processIndexedArrayWithKeysAssignment(
   }
 
   // Clear existing elements AFTER all RHS expansion
+  beforeInstall();
   ctx.executionScope.consumeWork(pendingValueCount, "indexed array assignment");
   if (!append) {
     clearExistingElements();
@@ -572,6 +586,7 @@ async function processSimpleArrayAssignment(
   array: WordNode[],
   append: boolean,
   clearExistingElements: () => void,
+  beforeInstall: () => void,
 ): Promise<void> {
   const allElements: string[] = [];
   for (const element of array) {
@@ -588,6 +603,7 @@ async function processSimpleArrayAssignment(
   }
 
   let startIndex = 0;
+  beforeInstall();
   ctx.executionScope.consumeWork(
     allElements.length,
     "indexed array assignment",
