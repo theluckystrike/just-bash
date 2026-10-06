@@ -15,6 +15,12 @@ describe("custom command deadline boundary", () => {
         defineCommand("retain", async (_args, ctx) => {
           if (!ctx.aliases) throw new Error("missing alias map");
           ctx.env.set("MARKER", "initial");
+          const receiver = { count: 0 };
+          ctx.env.forEach(function (this: typeof receiver, _value, key) {
+            expect(this).toBe(receiver);
+            if (key === "MARKER") this.count += 1;
+          }, receiver);
+          expect(receiver.count).toBe(1);
           ctx.aliases.set("greet", "echo greeting");
           retainedMaps.push(ctx.env, ctx.aliases);
           ctx.env.forEach((_value, key, map) => {

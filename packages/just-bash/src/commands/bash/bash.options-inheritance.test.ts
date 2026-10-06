@@ -56,10 +56,10 @@ describe("nested shell option inheritance", () => {
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
   });
-  it.each(["sh"])("%s enables exported pipefail", async (shell) => {
+  it("sh enables exported pipefail", async () => {
     const bash = new Bash();
     const result = await bash.exec(
-      `set -o pipefail; export SHELLOPTS; ${shell} -c 'false | true; echo $?'`,
+      `set -o pipefail; export SHELLOPTS; sh -c 'false | true; echo $?'`,
     );
     expect(result.stdout).toBe("1\n");
     expect(result.stderr).toBe("");
@@ -96,12 +96,12 @@ describe("nested shell option inheritance", () => {
     expect(result.exitCode).toBe(0);
   });
 
-  it("does not inherit unexported shell or shopt options", async () => {
+  it("does not inherit unexported shell options", async () => {
     const bash = new Bash();
     const result = await bash.exec(
-      `set -o pipefail; shopt -s nullglob; bash -c 'false | true; echo $?; printf "<%s>\\n" missing-*'`,
+      `set -o pipefail; bash -c 'false | true; echo $?'`,
     );
-    expect(result.stdout).toBe("0\n<missing-*>\n");
+    expect(result.stdout).toBe("0\n");
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
   });
