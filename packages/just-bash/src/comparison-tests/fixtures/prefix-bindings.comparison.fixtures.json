@@ -1,0 +1,45 @@
+{
+  "0691e54ac9cf4d17": {
+    "command": "declare -A a=([key]=value); a=(temp) unset a; printf \"lookup=<%s>\\n\" \"${a[key]}\"",
+    "files": {},
+    "stdout": "lookup=<value>\n",
+    "stderr": "",
+    "exitCode": 0,
+    "locked": true
+  },
+  "7f51e04f4ab312b9": {
+    "command": "TEMP=0; TEMP=one TEMP=$((TEMP=5)) :; echo $TEMP",
+    "files": {},
+    "stdout": "5\n",
+    "stderr": "",
+    "exitCode": 0
+  },
+  "7fe6ac709ad67a70": {
+    "command": "a=(old); a=(\"$((a[0]=5))\") :; printf \"array=<%s>\\n\" \"${a[0]}\"",
+    "files": {},
+    "stdout": "array=<5>\n",
+    "stderr": "",
+    "exitCode": 0
+  },
+  "c63ff2ea7909baa8": {
+    "command": "a=(old keep); a=(temp) a=(\"$((a[1]=5))\") :; printf \"<%s>\\n\" \"${a[@]}\"",
+    "files": {},
+    "stdout": "<old>\n<5>\n",
+    "stderr": "",
+    "exitCode": 0
+  },
+  "ec639d1320746459": {
+    "command": "TEMP=0; TEMP=one TEMP=two :; echo $TEMP",
+    "files": {},
+    "stdout": "0\n",
+    "stderr": "",
+    "exitCode": 0
+  },
+  "fe8b1d84d73669b3": {
+    "command": "TEMP=0; TEMP=5 TEMP=$((TEMP=5)) :; echo $TEMP",
+    "files": {},
+    "stdout": "5\n",
+    "stderr": "",
+    "exitCode": 0
+  }
+}

@@ -40,7 +40,8 @@ import {
 import { checkReadonlyError, isReadonly } from "./helpers/readonly.js";
 import { result } from "./helpers/result.js";
 import { traceAssignment } from "./helpers/xtrace.js";
-import type { InterpreterContext, ShellArray } from "./types.js";
+import type { PrefixBindings } from "./prefix-bindings.js";
+import type { InterpreterContext } from "./types.js";
 
 function appendAssignmentValue(
   ctx: InterpreterContext,
@@ -75,9 +76,7 @@ export interface AssignmentResult {
 export async function processAssignments(
   ctx: InterpreterContext,
   node: SimpleCommandNode,
-  tempAssignments: Map<string, string | undefined>,
-  tempArrays: Map<string, ShellArray | undefined>,
-  prefixFailureEnv: Map<string, string | undefined>,
+  bindings: PrefixBindings,
 ): Promise<AssignmentResult> {
   let xtraceOutput = "";
 
@@ -87,9 +86,7 @@ export async function processAssignments(
       const targetName = isNameref(ctx, name)
         ? resolveNameref(ctx, name)
         : name;
-      if (targetName && !prefixFailureEnv.has(targetName)) {
-        prefixFailureEnv.set(targetName, ctx.state.env.get(targetName));
-      }
+      if (targetName) bindings.beginExpansion(targetName);
     }
 
     // Handle array assignment: VAR=(a b c) or VAR+=(a b c)
@@ -100,8 +97,7 @@ export async function processAssignments(
         name,
         assignment.array,
         assignment.append,
-        tempAssignments,
-        tempArrays,
+        bindings,
       );
       if (arrayResult.error) {
         return {
@@ -140,7 +136,7 @@ export async function processAssignments(
         subscriptMatch[2],
         value,
         assignment.append,
-        tempAssignments,
+        bindings.values,
       );
       if (subscriptResult.error) {
         return {
@@ -161,7 +157,7 @@ export async function processAssignments(
       name,
       value,
       assignment.append,
-      tempAssignments,
+      bindings,
     );
     if (scalarResult.error) {
       return {
@@ -196,8 +192,7 @@ async function processArrayAssignment(
   name: string,
   array: WordNode[],
   append: boolean,
-  tempAssignments: Map<string, string | undefined>,
-  tempArrays: Map<string, ShellArray | undefined>,
+  bindings: PrefixBindings,
 ): Promise<SingleAssignmentResult> {
   let xtraceOutput = "";
 
@@ -253,16 +248,7 @@ async function processArrayAssignment(
   const savedScalar = ctx.state.env.get(name);
   const beforeInstall = (): void => {
     if (!node.name) return;
-    // RHS side effects belong to the underlying state, not the temporary array.
-    if (!tempArrays.has(name)) {
-      const underlyingArray = getArray(ctx, name);
-      tempArrays.set(
-        name,
-        underlyingArray ? cloneArray(underlyingArray) : undefined,
-      );
-    }
-    if (!tempAssignments.has(name))
-      tempAssignments.set(name, ctx.state.env.get(name));
+    bindings.capture(name);
   };
   const restoreTarget = (): void => {
     ctx.state.arrays ??= new Map();
@@ -838,7 +824,7 @@ async function processScalarAssignment(
   name: string,
   value: string,
   append: boolean,
-  tempAssignments: Map<string, string | undefined>,
+  bindings: PrefixBindings,
 ): Promise<SingleAssignmentResult> {
   let xtraceOutput = "";
 
@@ -925,9 +911,7 @@ async function processScalarAssignment(
 
   if (node.name) {
     if (arrayElementKey === undefined) {
-      if (!tempAssignments.has(targetName)) {
-        tempAssignments.set(targetName, ctx.state.env.get(targetName));
-      }
+      bindings.capture(targetName);
       ctx.state.env.set(targetName, finalValue);
     } else {
       // See processSubscriptAssignment: do not leak array-element prefix writes.

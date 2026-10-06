@@ -88,6 +88,7 @@ import { nullCommandExitStatus } from "./helpers/substitution-status.js";
 import { isWordLiteralMatch } from "./helpers/word-matching.js";
 import { traceSimpleCommand } from "./helpers/xtrace.js";
 import { executePipeline as executePipelineHelper } from "./pipeline-execution.js";
+import { PrefixBindings } from "./prefix-bindings.js";
 import {
   markProcessSubstitutions,
   releaseProcessSubstitutions,
@@ -112,7 +113,6 @@ import type {
   InterpreterContext,
   InterpreterExecOptions,
   InterpreterState,
-  ShellArray,
 } from "./types.js";
 
 function unsupportedCommandNode(node: never): never {
@@ -677,30 +677,23 @@ export class Interpreter {
     // clean marker rather than inheriting the previous command's.
     this.ctx.state.lastSubstitutionExitCode = null;
 
-    const tempAssignments = new Map<string, string | undefined>();
-    const tempArrays = new Map<string, ShellArray | undefined>();
-    const prefixFailureEnv = new Map<string, string | undefined>();
-    let commandFailed = false;
-    let assignmentsCompleted = false;
+    const bindings = new PrefixBindings(this.ctx);
+    const tempAssignments = bindings.values;
+    let outcome: Parameters<PrefixBindings["finish"]>[0] = "complete";
     let commandName = "";
-    let commandStarted = false;
-    let bindingsPushed = false;
-    let commandExited = false;
-    let successfulNullCommand = false;
     try {
       // Process all assignments (array, subscript, and scalar)
       const assignmentResult = await processAssignments(
         this.ctx,
         node,
-        tempAssignments,
-        tempArrays,
-        prefixFailureEnv,
+        bindings,
       );
       if (assignmentResult.error) {
         return assignmentResult.error;
       }
       const xtraceAssignmentOutput = assignmentResult.xtraceOutput;
-      assignmentsCompleted = true;
+      bindings.endExpansion();
+      bindings.phase = "arguments";
       if (!node.name) {
         // No command name - could be assignment-only or redirect-only (bare redirects)
         // e.g., "x=5" (assignment-only) or "> file" (bare redirect to create empty file)
@@ -904,7 +897,7 @@ export class Interpreter {
       // However, a literal empty string (like '') is "command not found".
       if (!commandName) {
         if (commandIsOnlyExpansions) {
-          successfulNullCommand = true;
+          outcome = "persist";
           // No args - treat as a no-op that reports the status of a command
           // substitution in the word (`$(exit 42)` is 42) and 0 otherwise.
           transaction.finish();
@@ -949,14 +942,13 @@ export class Interpreter {
       if (tempAssignments.size > 0) {
         this.ctx.state.tempEnvBindings = this.ctx.state.tempEnvBindings || [];
         this.ctx.state.tempEnvBindings.push(new Map(tempAssignments));
-        bindingsPushed = true;
       }
 
       let cmdResult: ExecResult;
       let controlFlowError: BreakError | ContinueError | null = null;
 
       try {
-        commandStarted = true;
+        bindings.phase = "dispatch";
         cmdResult = await this.runCommand(
           commandName,
           args,
@@ -1053,12 +1045,16 @@ export class Interpreter {
       // Follow Bash 3.2: explicit exit keeps prefix bindings visible to EXIT
       // handling. Bash 5.3 restores the previous bindings instead.
       // Fatal expansion failures, including propagated eval failures, unwind them.
-      commandExited = error instanceof ExitError && error.reason === "exit";
-      commandFailed = !(
-        error instanceof ReturnError ||
-        error instanceof BreakError ||
-        error instanceof ContinueError
-      );
+      outcome =
+        error instanceof ExitError && error.reason === "exit"
+          ? "exit"
+          : error instanceof ReturnError ||
+              error instanceof BreakError ||
+              error instanceof ContinueError
+            ? "control-transfer"
+            : bindings.phase === "dispatch"
+              ? "execution-failure"
+              : "preparation-failure";
       throw error;
     } finally {
       // Successful null commands retain assignments, as do dispatched POSIX
@@ -1067,52 +1063,13 @@ export class Interpreter {
         isPosixSpecialBuiltin(commandName) &&
         commandName !== "unset" &&
         commandName !== "eval";
-      const shouldRestoreTempAssignments =
-        !commandExited &&
-        !successfulNullCommand &&
-        (!commandStarted ||
-          !this.ctx.state.options.posix ||
-          !isPosixSpecialWithPersistence);
-
-      if (shouldRestoreTempAssignments) {
-        for (const [name, array] of tempArrays) {
-          if (array) {
-            this.ctx.state.arrays ??= new Map();
-            this.ctx.state.arrays.set(name, array);
-          } else this.ctx.state.arrays?.delete(name);
-        }
-        for (const [name, savedValue] of tempAssignments) {
-          // Argument preparation failures restore the pre-prefix value. Partial
-          // prefix processing and dispatched commands reveal the post-RHS value.
-          const value =
-            commandFailed &&
-            assignmentsCompleted &&
-            !commandStarted &&
-            prefixFailureEnv.has(name)
-              ? prefixFailureEnv.get(name)
-              : savedValue;
-          // Skip restoration if this variable was a local that was fully unset
-          // This implements bash's behavior where unsetting all local cells
-          // prevents the tempenv from being restored
-          if (commandStarted && this.ctx.state.fullyUnsetLocals?.has(name)) {
-            continue;
-          }
-          if (value === undefined) this.ctx.state.env.delete(name);
-          else this.ctx.state.env.set(name, value);
-        }
-      }
-
-      // Clear temp exported vars after command execution
-      if (this.ctx.state.tempExportedVars) {
-        for (const name of tempAssignments.keys()) {
-          this.ctx.state.tempExportedVars.delete(name);
-        }
-      }
-
-      // Pop tempEnvBindings from the stack
-      if (bindingsPushed && this.ctx.state.tempEnvBindings) {
-        this.ctx.state.tempEnvBindings.pop();
-      }
+      bindings.finish(
+        bindings.phase === "dispatch" &&
+          this.ctx.state.options.posix &&
+          isPosixSpecialWithPersistence
+          ? "persist"
+          : outcome,
+      );
     }
   }
 
