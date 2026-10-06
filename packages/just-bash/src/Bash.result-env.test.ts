@@ -80,17 +80,17 @@ describe("execution result environment", () => {
     expect(result.exitCode).toBe(0);
   });
 
-  it("unwinds bindings when a later prefix value fails to expand", async () => {
-    const result = await new Bash().exec(
-      "MARKER=kept; TEMP=secret OTHER=${MISSING:?required} echo",
-      {
-        env: { TEMP: "original" },
-        replaceEnv: true,
-      },
-    );
-    expect(result.env).toStrictEqual(
-      nullPrototype({ TEMP: "original", MARKER: "kept", "?": "0" }),
-    );
+  it.each([
+    "TEMP=$((TEMP=5)) OTHER=${MISSING:?required} echo",
+    "TEMP=$((TEMP=5)) eval 'echo ${MISSING:?required}'",
+  ])("preserves completed RHS side effects when a later operation fails: %s", async (command) => {
+    const result = await new Bash().exec(`TEMP=0; ${command}`, {
+      env: {},
+      replaceEnv: true,
+    });
+    expect(result.env.TEMP).toBe("5");
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("bash: required\n");
     expect(result.exitCode).toBe(1);
   });
 

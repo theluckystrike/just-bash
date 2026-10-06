@@ -681,6 +681,7 @@ export class Interpreter {
     const tempArrays = new Map<string, ShellArray | undefined>();
     const prefixFailureEnv = new Map<string, string | undefined>();
     let commandFailed = false;
+    let assignmentsCompleted = false;
     let commandName = "";
     let commandStarted = false;
     let bindingsPushed = false;
@@ -699,6 +700,7 @@ export class Interpreter {
         return assignmentResult.error;
       }
       const xtraceAssignmentOutput = assignmentResult.xtraceOutput;
+      assignmentsCompleted = true;
       if (!node.name) {
         // No command name - could be assignment-only or redirect-only (bare redirects)
         // e.g., "x=5" (assignment-only) or "> file" (bare redirect to create empty file)
@@ -1080,8 +1082,13 @@ export class Interpreter {
           } else this.ctx.state.arrays?.delete(name);
         }
         for (const [name, savedValue] of tempAssignments) {
+          // Argument preparation failures restore the pre-prefix value. Partial
+          // prefix processing and dispatched commands reveal the post-RHS value.
           const value =
-            commandFailed && prefixFailureEnv.has(name)
+            commandFailed &&
+            assignmentsCompleted &&
+            !commandStarted &&
+            prefixFailureEnv.has(name)
               ? prefixFailureEnv.get(name)
               : savedValue;
           // Skip restoration if this variable was a local that was fully unset
