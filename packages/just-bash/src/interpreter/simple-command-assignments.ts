@@ -77,11 +77,20 @@ export async function processAssignments(
   node: SimpleCommandNode,
   tempAssignments: Map<string, string | undefined>,
   tempArrays: Map<string, ShellArray | undefined>,
+  prefixFailureEnv: Map<string, string | undefined>,
 ): Promise<AssignmentResult> {
   let xtraceOutput = "";
 
   for (const assignment of node.assignments) {
     const name = assignment.name;
+    if (node.name) {
+      const targetName = isNameref(ctx, name)
+        ? resolveNameref(ctx, name)
+        : name;
+      if (targetName && !prefixFailureEnv.has(targetName)) {
+        prefixFailureEnv.set(targetName, ctx.state.env.get(targetName));
+      }
+    }
 
     // Handle array assignment: VAR=(a b c) or VAR+=(a b c)
     if (assignment.array) {

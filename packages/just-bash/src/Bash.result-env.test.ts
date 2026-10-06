@@ -3,6 +3,17 @@ import { Bash } from "./Bash.js";
 import { nullPrototype } from "./commands/query-engine/safe-object.js";
 
 describe("execution result environment", () => {
+  it.each([
+    'TEMP=old; f() { TEMP=$((TEMP=5)) return; }; f; echo "$TEMP"',
+    'TEMP=old; for i in 1; do TEMP=$((TEMP=5)) break; done; echo "$TEMP"',
+    'TEMP=old; for i in 1; do TEMP=$((TEMP=5)) continue; done; echo "$TEMP"',
+  ])("preserves prefix RHS side effects across normal control transfers: %s", async (script) => {
+    const result = await new Bash().exec(script);
+    expect(result.stdout).toBe("5\n");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+    expect(result.env.TEMP).toBe("5");
+  });
   it("preserves RHS side effects after successful prefix commands", async () => {
     const result = await new Bash().exec(
       'TEMP=original; TEMP=$((TEMP=5)) :; echo "$TEMP"; TEMP=$((TEMP=6)) echo command; echo "$TEMP"',
@@ -51,7 +62,7 @@ describe("execution result environment", () => {
     expect(result.exitCode).toBe(1);
   });
 
-  it("retains prefix bindings when the command actually exits", async () => {
+  it("retains explicit-exit prefix bindings following Bash 3.2", async () => {
     const result = await new Bash().exec("TEMP=secret exit 7", {
       env: {},
       replaceEnv: true,

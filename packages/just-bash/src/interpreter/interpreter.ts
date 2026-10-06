@@ -679,10 +679,7 @@ export class Interpreter {
 
     const tempAssignments = new Map<string, string | undefined>();
     const tempArrays = new Map<string, ShellArray | undefined>();
-    const prefixFailureEnv =
-      node.name && node.assignments.length > 0
-        ? new Map(this.ctx.state.env)
-        : this.ctx.state.env;
+    const prefixFailureEnv = new Map<string, string | undefined>();
     let commandFailed = false;
     let commandName = "";
     let commandStarted = false;
@@ -696,6 +693,7 @@ export class Interpreter {
         node,
         tempAssignments,
         tempArrays,
+        prefixFailureEnv,
       );
       if (assignmentResult.error) {
         return assignmentResult.error;
@@ -1050,10 +1048,15 @@ export class Interpreter {
 
       return cmdResult;
     } catch (error) {
-      // An actual exit keeps command-prefix bindings visible to EXIT handling.
+      // Follow Bash 3.2: explicit exit keeps prefix bindings visible to EXIT
+      // handling. Bash 5.3 restores the previous bindings instead.
       // Fatal expansion failures, including propagated eval failures, unwind them.
       commandExited = error instanceof ExitError && error.reason === "exit";
-      commandFailed = true;
+      commandFailed = !(
+        error instanceof ReturnError ||
+        error instanceof BreakError ||
+        error instanceof ContinueError
+      );
       throw error;
     } finally {
       // Successful null commands retain assignments, as do dispatched POSIX
@@ -1077,7 +1080,10 @@ export class Interpreter {
           } else this.ctx.state.arrays?.delete(name);
         }
         for (const [name, savedValue] of tempAssignments) {
-          const value = commandFailed ? prefixFailureEnv.get(name) : savedValue;
+          const value =
+            commandFailed && prefixFailureEnv.has(name)
+              ? prefixFailureEnv.get(name)
+              : savedValue;
           // Skip restoration if this variable was a local that was fully unset
           // This implements bash's behavior where unsetting all local cells
           // prevents the tempenv from being restored
