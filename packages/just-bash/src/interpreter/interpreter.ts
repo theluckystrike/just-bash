@@ -79,7 +79,7 @@ import {
   PosixFatalError,
   ReturnError,
 } from "./errors.js";
-import { expandWord, expandWordWithGlob } from "./expansion.js";
+import { expandWordWithGlob } from "./expansion.js";
 import { advanceFd } from "./fd-table.js";
 import { executeFunctionDef } from "./functions.js";
 import { failure, OK, result, testResult } from "./helpers/result.js";
@@ -774,7 +774,8 @@ export class Interpreter {
       }
     }
 
-    let commandName = await expandWord(this.ctx, node.name);
+    const expandedName = await expandWordWithGlob(this.ctx, node.name);
+    let commandName = expandedName.values[0] ?? "";
 
     const args: string[] = [];
     const quotedArgs: boolean[] = [];
@@ -788,6 +789,12 @@ export class Interpreter {
       args.push(value);
       quotedArgs.push(quoted);
     };
+
+    // An unquoted expansion in the command word is field split like any other
+    // word: the first field names the command and the rest lead its arguments.
+    for (const value of expandedName.values.slice(1)) {
+      appendArgument(value, expandedName.quoted);
+    }
 
     // Handle local/declare/export/readonly arguments specially:
     // - For array assignments like `local a=(1 "2 3")`, preserve quote structure
