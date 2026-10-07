@@ -46,7 +46,12 @@ export interface MountableFsOptions {
 // Sync writes that InMemoryFs and OverlayFs add to IFileSystem
 type SyncWrites = Partial<{
   mkdirSync(path: string, options?: MkdirOptions): void;
-  writeFileSync(path: string, content: string | Uint8Array): void;
+  writeFileSync(
+    path: string,
+    content: string | Uint8Array,
+    options?: WriteFileOptions | BufferEncoding,
+    metadata?: { mode?: number; mtime?: Date },
+  ): void;
 }>;
 
 /**
@@ -454,13 +459,18 @@ export class MountableFs implements IFileSystem {
    * Synchronous writeFile, routed to the filesystem that owns the path.
    * @throws Error if that filesystem has no synchronous writes
    */
-  writeFileSync(path: string, content: string | Uint8Array): void {
+  writeFileSync(
+    path: string,
+    content: string | Uint8Array,
+    options?: WriteFileOptions | BufferEncoding,
+    metadata?: { mode?: number; mtime?: Date },
+  ): void {
     const { fs, relativePath } = this.routePath(path);
     const target = fs as SyncWrites;
     if (!target.writeFileSync) {
       throw new Error(`ENOSYS: function not implemented, write '${path}'`);
     }
-    target.writeFileSync(relativePath, content);
+    target.writeFileSync(relativePath, content, options, metadata);
   }
 
   async readdir(path: string): Promise<string[]> {

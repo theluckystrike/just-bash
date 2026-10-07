@@ -590,18 +590,29 @@ export class Bash {
     // Works for both InMemoryFs and OverlayFs (both have writeFileSync)
     // Commands are registered to both locations like real Linux systems
     // (where /bin is often a symlink to /usr/bin on modern systems)
+    // Stubs get mode 0o755 so `test -x` and PATH probes such as autoconf's
+    // as_fn_executable_p treat them as programs, like real binaries.
     const fs = this.fs as {
-      writeFileSync?: (path: string, content: string) => void;
+      writeFileSync?: (
+        path: string,
+        content: string,
+        options?: undefined,
+        metadata?: { mode?: number },
+      ) => void;
     };
     if (typeof fs.writeFileSync === "function") {
       const stub = `#!/bin/bash\n# Built-in command: ${command.name}\n`;
       try {
-        fs.writeFileSync(`/bin/${command.name}`, stub);
+        fs.writeFileSync(`/bin/${command.name}`, stub, undefined, {
+          mode: 0o755,
+        });
       } catch {
         // Ignore errors
       }
       try {
-        fs.writeFileSync(`/usr/bin/${command.name}`, stub);
+        fs.writeFileSync(`/usr/bin/${command.name}`, stub, undefined, {
+          mode: 0o755,
+        });
       } catch {
         // Ignore errors
       }

@@ -280,7 +280,12 @@ export class OverlayFs implements IFileSystem {
   /**
    * Create a virtual file in memory (sync, for initialization)
    */
-  writeFileSync(path: string, content: string | Uint8Array): void {
+  writeFileSync(
+    path: string,
+    content: string | Uint8Array,
+    _options?: unknown,
+    metadata?: { mode?: number; mtime?: Date },
+  ): void {
     const normalized = normalizePath(path);
     // Ensure parent directories exist
     const parent = this.getDirname(normalized);
@@ -294,8 +299,8 @@ export class OverlayFs implements IFileSystem {
     this.setMemoryEntry(normalized, {
       type: "file",
       content: buffer,
-      mode: DEFAULT_FILE_MODE,
-      mtime: new Date(),
+      mode: metadata?.mode ?? DEFAULT_FILE_MODE,
+      mtime: metadata?.mtime ?? new Date(),
     });
   }
 
