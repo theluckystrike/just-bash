@@ -35,8 +35,13 @@ export function breToEre(pattern: string): string {
   let result = "";
   let i = 0;
   let inBracket = false;
+  // Set when \| was just emitted, so ^ can anchor the next alternative
+  let afterAlternation = false;
 
   while (i < pattern.length) {
+    const atAlternativeStart = afterAlternation;
+    afterAlternation = false;
+
     // Handle bracket expressions - copy contents mostly verbatim
     if (pattern[i] === "[" && !inBracket) {
       // Check for standalone POSIX character classes like [[:space:]]
@@ -132,6 +137,7 @@ export function breToEre(pattern: string): string {
         // BRE escaped chars that become special in ERE
         if (next === "+" || next === "?" || next === "|") {
           result += next; // Remove backslash to make it special
+          afterAlternation = next === "|";
           i += 2;
           continue;
         }
@@ -182,11 +188,12 @@ export function breToEre(pattern: string): string {
     }
 
     // Handle ^ anchor: In BRE, ^ is only an anchor at the start of the pattern
-    // or immediately after \( (which becomes ( in ERE). When ^ appears
+    // or immediately after \( (which becomes ( in ERE) or \|. When ^ appears
     // elsewhere, it should be treated as a literal character.
     if (pattern[i] === "^") {
       // Check if we're at the start of result OR after an opening group paren
-      const isAnchor = result === "" || result.endsWith("(");
+      const isAnchor =
+        result === "" || result.endsWith("(") || atAlternativeStart;
       if (!isAnchor) {
         result += "\\^"; // Escape to make it literal in ERE
         i++;
@@ -195,7 +202,7 @@ export function breToEre(pattern: string): string {
     }
 
     // Handle $ anchor: In BRE, $ is only an anchor at the end of the pattern
-    // or immediately before \) (which becomes ) in ERE). When $ appears
+    // or immediately before \) (which becomes ) in ERE) or \|. When $ appears
     // elsewhere, it should be treated as a literal character.
     if (pattern[i] === "$") {
       // Check if we're at the end of pattern OR before a closing group
@@ -205,7 +212,11 @@ export function breToEre(pattern: string): string {
         i + 2 < pattern.length &&
         pattern[i + 1] === "\\" &&
         pattern[i + 2] === ")";
-      if (!isEnd && !beforeGroupClose) {
+      const beforeAlternation =
+        i + 2 < pattern.length &&
+        pattern[i + 1] === "\\" &&
+        pattern[i + 2] === "|";
+      if (!isEnd && !beforeGroupClose && !beforeAlternation) {
         result += "\\$"; // Escape to make it literal in ERE
         i++;
         continue;
