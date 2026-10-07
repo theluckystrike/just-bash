@@ -16,7 +16,7 @@ export interface RelativeOffset {
 export type SedAddress =
   | number
   | "$"
-  | { pattern: string }
+  | { pattern: string; extendedRegex?: boolean }
   | StepAddress
   | RelativeOffset;
 

@@ -156,18 +156,6 @@ const SKIP_TESTS: Map<string, string> = new Map<string, string>([
     "complex N/D branching",
   ],
   [
-    "pythonsed-chang.suite:Get every Nth line of a file - 1.",
-    "complex N/D branching",
-  ],
-  [
-    "pythonsed-chang.suite:Join every N lines to one - 1.",
-    "complex N/D branching",
-  ],
-  [
-    "pythonsed-chang.suite:Extract every IMG elements from an HTML file.",
-    "complex branching",
-  ],
-  [
     "pythonsed-chang.suite:Find failed instances without latter successful ones.",
     "complex N/D branching",
   ],

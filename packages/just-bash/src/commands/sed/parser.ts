@@ -442,7 +442,10 @@ class SedParser {
 
       case SedTokenType.PATTERN:
         this.advance();
-        return { pattern: token.pattern || (token.value as string) };
+        return {
+          pattern: token.pattern || (token.value as string),
+          extendedRegex: this.extendedRegex,
+        };
 
       case SedTokenType.STEP:
         this.advance();

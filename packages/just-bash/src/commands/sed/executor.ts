@@ -90,9 +90,11 @@ function matchesAddress(
         // Track this pattern for future empty regex reuse
         state.lastPattern = rawPattern;
       }
-      // Convert BRE to ERE for JavaScript regex compatibility
+      // Convert BRE to ERE if not using extended regex mode
       // Then normalize for JavaScript (e.g., {,n} → {0,n})
-      const pattern = normalizeForJs(breToEre(rawPattern));
+      const pattern = normalizeForJs(
+        address.extendedRegex ? rawPattern : breToEre(rawPattern),
+      );
       const regex = createUserRegex(pattern);
       return regex.test(line);
     } catch {
